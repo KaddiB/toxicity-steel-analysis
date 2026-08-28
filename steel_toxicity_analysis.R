@@ -101,7 +101,7 @@ cat("\n========== CREATING VISUALIZATIONS ==========\n")
 # Plot 1: Cell viability by concentration and occasion (single plot with occasion color-coded)
 plot1 <- ggplot(data_toxicity, aes(x = concentration, y = viability, fill = occasion)) +
   geom_boxplot(alpha = 0.7, position = position_dodge(width = 0.75)) +
-  geom_jitter(aes(color = occasion), width = 0.1, alpha = 0.4, size = 2, position = position_dodge(width = 0.75)) +
+  geom_jitter(aes(color = occasion), position = position_dodge(width = 0.75), alpha = 0.4, size = 2) +
   labs(
     title = "MCF7A1H1 - Cell Viability by Concentration and Occasion",
     x = "Drug Concentration (µg/ml)",
