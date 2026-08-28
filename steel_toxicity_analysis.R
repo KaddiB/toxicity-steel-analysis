@@ -98,19 +98,22 @@ print(summary_by_both)
 
 cat("\n========== CREATING VISUALIZATIONS ==========\n")
 
-# Plot 1: Box plot of viability by concentration
-plot1 <- ggplot(data_toxicity, aes(x = concentration, y = viability, fill = concentration)) +
-  geom_boxplot(alpha = 0.7) +
-  geom_jitter(width = 0.2, alpha = 0.5, size = 2) +
-  facet_wrap(~occasion) +
+# Plot 1: Cell viability by concentration and occasion (single plot with occasion color-coded)
+plot1 <- ggplot(data_toxicity, aes(x = concentration, y = viability, fill = occasion)) +
+  geom_boxplot(alpha = 0.7, position = position_dodge(width = 0.75)) +
+  geom_jitter(aes(color = occasion), width = 0.1, alpha = 0.4, size = 2, position = position_dodge(width = 0.75)) +
   labs(
     title = "MCF7A1H1 - Cell Viability by Concentration and Occasion",
     x = "Drug Concentration (µg/ml)",
     y = "Viability",
-    fill = "Concentration"
+    fill = "Occasion",
+    color = "Occasion"
   ) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
 
 # Plot 2: Line plot showing dose-response across occasions
 plot2 <- data_toxicity %>%
