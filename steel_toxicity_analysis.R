@@ -32,21 +32,21 @@ set.seed(42)
 # 3 technical replicates × 4 occasions = 12 observations per concentration
 
 data_toxicity <- expand_grid(
-  occasion = factor(1:4, labels = c("Day_1", "Day_2", "Day_3", "Day_4")),
+  occasion = factor(1:4, labels = c("30.06.26", "08.07.26", "15.07.26", "16.07.26")),
   replicate = factor(1:3, labels = c("Rep_1", "Rep_2", "Rep_3")),
   concentration = factor(
-    c("Control", "Conc_1", "Conc_2", "Conc_3", "Conc_4"),
-    levels = c("Control", "Conc_1", "Conc_2", "Conc_3", "Conc_4")
+    c("Control", "50", "100", "200", "500"),
+    levels = c("Control", "50", "100", "200", "500")
   )
 ) %>%
   mutate(
     # Simulate viability data with dose-dependent decrease
     viability = case_when(
       concentration == "Control" ~ rnorm(n(), mean = 98, sd = 3),
-      concentration == "Conc_1" ~ rnorm(n(), mean = 92, sd = 4),
-      concentration == "Conc_2" ~ rnorm(n(), mean = 85, sd = 5),
-      concentration == "Conc_3" ~ rnorm(n(), mean = 72, sd = 6),
-      concentration == "Conc_4" ~ rnorm(n(), mean = 55, sd = 8)
+      concentration == "50" ~ rnorm(n(), mean = 92, sd = 4),
+      concentration == "100" ~ rnorm(n(), mean = 85, sd = 5),
+      concentration == "200" ~ rnorm(n(), mean = 72, sd = 6),
+      concentration == "500" ~ rnorm(n(), mean = 55, sd = 8)
     ),
     # Add occasion effect (e.g., slight batch variation)
     viability = viability + as.numeric(occasion) * 0.5,
@@ -241,10 +241,10 @@ cat("\n========== TREND TEST (Linear Dose-Response) ==========\n")
 data_toxicity_dose <- data_toxicity %>%
   mutate(dose = case_when(
     concentration == "Control" ~ 0,
-    concentration == "Conc_1" ~ 1,
-    concentration == "Conc_2" ~ 2,
-    concentration == "Conc_3" ~ 3,
-    concentration == "Conc_4" ~ 4
+    concentration == "50" ~ 1,
+    concentration == "100" ~ 2,
+    concentration == "200" ~ 3,
+    concentration == "500" ~ 4
   ))
 
 # Fit model with dose as continuous variable
