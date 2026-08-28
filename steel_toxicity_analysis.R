@@ -1,0 +1,336 @@
+# Steel's (Dunnett's) Test Analysis for Drug Toxicity Data
+# Analysis of cell viability across drug concentrations with repeated measures (occasions)
+# 3 technical replicates per concentration per occasion
+# 4 occasions (different days, same cell line)
+
+# Clear workspace
+rm(list = ls())
+
+# ============================================================================
+# 1. LOAD REQUIRED LIBRARIES
+# ============================================================================
+
+packages <- c("tidyverse", "multcomp", "car", "lme4", "emmeans", "ggplot2", "gridExtra")
+
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+
+# ============================================================================
+# 2. CREATE SAMPLE DATA (REPLACE WITH YOUR OWN)
+# ============================================================================
+
+# This creates a realistic sample dataset
+# Replace this section with your actual data import (e.g., read.csv())
+
+set.seed(42)
+
+# Create sample data: cell viability (%) for 4 concentrations + control
+# 3 technical replicates × 4 occasions = 12 observations per concentration
+
+data_toxicity <- expand_grid(
+  occasion = factor(1:4, labels = c("Day_1", "Day_2", "Day_3", "Day_4")),
+  replicate = factor(1:3, labels = c("Rep_1", "Rep_2", "Rep_3")),
+  concentration = factor(
+    c("Control", "Conc_1", "Conc_2", "Conc_3", "Conc_4"),
+    levels = c("Control", "Conc_1", "Conc_2", "Conc_3", "Conc_4")
+  )
+) %>%
+  mutate(
+    # Simulate viability data with dose-dependent decrease
+    viability = case_when(
+      concentration == "Control" ~ rnorm(n(), mean = 98, sd = 3),
+      concentration == "Conc_1" ~ rnorm(n(), mean = 92, sd = 4),
+      concentration == "Conc_2" ~ rnorm(n(), mean = 85, sd = 5),
+      concentration == "Conc_3" ~ rnorm(n(), mean = 72, sd = 6),
+      concentration == "Conc_4" ~ rnorm(n(), mean = 55, sd = 8)
+    ),
+    # Add occasion effect (e.g., slight batch variation)
+    viability = viability + as.numeric(occasion) * 0.5,
+    # Ensure viability is between 0 and 100
+    viability = pmax(0, pmin(100, viability))
+  ) %>%
+  arrange(occasion, concentration, replicate)
+
+# Display first rows
+head(data_toxicity, 12)
+print("Data structure:")
+str(data_toxicity)
+
+# ============================================================================
+# 3. DESCRIPTIVE STATISTICS
+# ============================================================================
+
+cat("\n========== DESCRIPTIVE STATISTICS ==========\n")
+
+# Summary by concentration
+summary_by_conc <- data_toxicity %>%
+  group_by(concentration) %>%
+  summarise(
+    N = n(),
+    Mean = mean(viability, na.rm = TRUE),
+    SD = sd(viability, na.rm = TRUE),
+    Min = min(viability, na.rm = TRUE),
+    Max = max(viability, na.rm = TRUE),
+    SE = SD / sqrt(N),
+    .groups = "drop"
+  )
+
+print("Summary by Concentration:")
+print(summary_by_conc)
+
+# Summary by occasion
+summary_by_occasion <- data_toxicity %>%
+  group_by(occasion) %>%
+  summarise(
+    N = n(),
+    Mean = mean(viability, na.rm = TRUE),
+    SD = sd(viability, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print("\nSummary by Occasion:")
+print(summary_by_occasion)
+
+# Summary by concentration and occasion
+summary_by_both <- data_toxicity %>%
+  group_by(concentration, occasion) %>%
+  summarise(
+    N = n(),
+    Mean = mean(viability, na.rm = TRUE),
+    SD = sd(viability, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print("\nSummary by Concentration and Occasion:")
+print(summary_by_both)
+
+# ============================================================================
+# 4. VISUALIZATION
+# ============================================================================
+
+cat("\n========== CREATING VISUALIZATIONS ==========\n")
+
+# Plot 1: Box plot of viability by concentration
+plot1 <- ggplot(data_toxicity, aes(x = concentration, y = viability, fill = concentration)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.5, size = 2) +
+  facet_wrap(~occasion) +
+  labs(
+    title = "Cell Viability by Concentration and Occasion",
+    x = "Drug Concentration",
+    y = "Viability (%)",
+    fill = "Concentration"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot 2: Line plot showing dose-response across occasions
+plot2 <- data_toxicity %>%
+  group_by(concentration, occasion) %>%
+  summarise(Mean = mean(viability), SE = sd(viability) / sqrt(n()), .groups = "drop") %>%
+  ggplot(aes(x = concentration, y = Mean, color = occasion, group = occasion)) +
+  geom_point(size = 3) +
+  geom_line() +
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2) +
+  labs(
+    title = "Mean Viability by Concentration (with SE)",
+    x = "Drug Concentration",
+    y = "Mean Viability (%)",
+    color = "Occasion"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot 3: Dose-response curve (collapsed across occasions)
+plot3 <- data_toxicity %>%
+  group_by(concentration) %>%
+  summarise(Mean = mean(viability), SE = sd(viability) / sqrt(n()), .groups = "drop") %>%
+  ggplot(aes(x = concentration, y = Mean)) +
+  geom_point(size = 4, color = "steelblue") +
+  geom_line(aes(group = 1), color = "steelblue", size = 1) +
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2, color = "steelblue") +
+  labs(
+    title = "Dose-Response Curve (All Occasions Combined)",
+    x = "Drug Concentration",
+    y = "Mean Viability (%)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Combine and display plots
+combined_plots <- gridExtra::grid.arrange(plot1, plot2, plot3, nrow = 2)
+print(combined_plots)
+
+# Save plots
+ggsave("toxicity_analysis_plots.pdf", combined_plots, width = 14, height = 10)
+cat("Plots saved to: toxicity_analysis_plots.pdf\n")
+
+# ============================================================================
+# 5. LINEAR MIXED EFFECTS MODEL (for repeated measures)
+# ============================================================================
+
+cat("\n========== LINEAR MIXED EFFECTS MODEL ==========\n")
+
+# Fit mixed model with random intercept for occasion (repeated measures)
+# Fixed effects: concentration
+# Random effects: occasion (accounts for between-day variation)
+
+model_lme <- lme4::lmer(
+  viability ~ concentration + (1 | occasion),
+  data = data_toxicity,
+  REML = TRUE
+)
+
+print(summary(model_lme))
+
+# Model diagnostics
+cat("\n--- Model Diagnostics ---\n")
+print("Residual plot:")
+plot(model_lme)
+
+# Check assumptions
+residuals_lme <- residuals(model_lme)
+shapiro_test <- shapiro.test(residuals_lme)
+cat("\nShapiro-Wilk test for normality of residuals:\n")
+print(shapiro_test)
+
+# Variance homogeneity test (Levene's test)
+data_toxicity$fitted_values <- predict(model_lme)
+levene_test <- car::leveneTest(residuals_lme ~ data_toxicity$concentration)
+cat("\nLevene's test for homogeneity of variance:\n")
+print(levene_test)
+
+# ============================================================================
+# 6. STEEL'S TEST (Dunnett's Test) - Compare Each Concentration to Control
+# ============================================================================
+
+cat("\n========== STEEL'S TEST (DUNNETT'S TEST) ==========\n")
+cat("Testing whether each concentration differs significantly from Control\n")
+
+# Using emmeans for contrasts
+emmeans_fit <- emmeans::emmeans(model_lme, ~concentration)
+
+# Dunnett test: compare all treatments to control
+dunnett_contrasts <- emmeans::contrast(emmeans_fit, method = "dunnett", ref = 1)
+print(summary(dunnett_contrasts, adjust = "dunnett"))
+
+# Convert to a more readable format
+dunnett_results <- summary(dunnett_contrasts, adjust = "dunnett") %>%
+  as.data.frame() %>%
+  mutate(
+    Significant = ifelse(p.value < 0.05, "***", ""),
+    p.value = round(p.value, 4)
+  )
+
+cat("\n--- Dunnett's Test Results ---\n")
+cat("Null hypothesis: Each concentration has the same viability as Control\n")
+cat("Adjusted p-values (Dunnett correction):\n\n")
+print(dunnett_results)
+
+# ============================================================================
+# 7. TREND TEST (Linear Contrast for Dose-Response)
+# ============================================================================
+
+cat("\n========== TREND TEST (Linear Dose-Response) ==========\n")
+
+# Create numeric dose variable (assuming ordered concentrations)
+data_toxicity_dose <- data_toxicity %>%
+  mutate(dose = case_when(
+    concentration == "Control" ~ 0,
+    concentration == "Conc_1" ~ 1,
+    concentration == "Conc_2" ~ 2,
+    concentration == "Conc_3" ~ 3,
+    concentration == "Conc_4" ~ 4
+  ))
+
+# Fit model with dose as continuous variable
+model_dose <- lme4::lmer(
+  viability ~ dose + (1 | occasion),
+  data = data_toxicity_dose,
+  REML = TRUE
+)
+
+print(summary(model_dose))
+
+# Extract dose effect
+dose_coef <- fixef(model_dose)["dose"]
+cat(sprintf("\nDose coefficient: %.4f\n", dose_coef))
+cat("Interpretation: For each unit increase in concentration,\n")
+cat(sprintf("viability decreases by approximately %.2f%%\n", abs(dose_coef)))
+
+# Test if trend is significant
+cat("\nLinear trend test (from dose model):\n")
+trend_summary <- summary(model_dose)
+print(trend_summary)
+
+# ============================================================================
+# 8. COMPREHENSIVE RESULTS TABLE
+# ============================================================================
+
+cat("\n========== COMPREHENSIVE RESULTS TABLE ==========\n")
+
+results_table <- emmeans_fit %>%
+  as.data.frame() %>%
+  mutate(
+    concentration = concentration,
+    Mean_Viability = round(emmean, 2),
+    SE = round(SE, 2),
+    CI_Lower = round(lower.CL, 2),
+    CI_Upper = round(upper.CL, 2)
+  ) %>%
+  select(concentration, Mean_Viability, SE, CI_Lower, CI_Upper)
+
+print(results_table)
+
+# ============================================================================
+# 9. SAVE RESULTS
+# ============================================================================
+
+cat("\n========== SAVING RESULTS ==========\n")
+
+# Save results table
+write.csv(results_table, "toxicity_results_table.csv", row.names = FALSE)
+write.csv(dunnett_results, "dunnett_test_results.csv", row.names = FALSE)
+write.csv(summary_by_conc, "summary_statistics.csv", row.names = FALSE)
+
+cat("Results saved:\n")
+cat("  - toxicity_results_table.csv\n")
+cat("  - dunnett_test_results.csv\n")
+cat("  - summary_statistics.csv\n")
+
+# ============================================================================
+# 10. SUMMARY AND INTERPRETATION
+# ============================================================================
+
+cat("\n========== SUMMARY AND INTERPRETATION ==========\n")
+cat("\n1. DOSE-RESPONSE RELATIONSHIP:\n")
+if (abs(dose_coef) > 0.1 && summary(model_dose)$coefficients["dose", "Pr(>|t|)"] < 0.05) {
+  cat("   ✓ Significant negative linear trend detected\n")
+  cat("   ✓ Cell viability significantly decreases with increasing drug concentration\n")
+} else {
+  cat("   ✗ No significant linear dose-response trend detected\n")
+}
+
+cat("\n2. CONCENTRATION-SPECIFIC EFFECTS (vs. Control):\n")
+sig_contrasts <- dunnett_results %>% filter(p.value < 0.05)
+if (nrow(sig_contrasts) > 0) {
+  cat(sprintf("   ✓ %d concentration(s) show significant reduction in viability:\n", nrow(sig_contrasts)))
+  for (i in 1:nrow(sig_contrasts)) {
+    cat(sprintf("     - %s (p = %.4f)\n", sig_contrasts$contrast[i], sig_contrasts$p.value[i]))
+  }
+} else {
+  cat("   ✗ No concentrations show significant reduction compared to control\n")
+}
+
+cat("\n3. REPEATED MEASURES EFFECT (Occasion variability):\n")
+random_effect_var <- as.numeric(VarCorr(model_lme)$occasion)
+residual_var <- attr(VarCorr(model_lme), "sc")^2
+cat(sprintf("   - Between-occasion variance: %.2f\n", random_effect_var))
+cat(sprintf("   - Residual variance: %.2f\n", residual_var))
+cat(sprintf("   - Ratio: %.2f%%\n", 100 * random_effect_var / (random_effect_var + residual_var)))
+
+cat("\n========== ANALYSIS COMPLETE ==========\n")
