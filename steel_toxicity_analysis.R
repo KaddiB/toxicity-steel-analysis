@@ -1,4 +1,4 @@
-# Steel's (Dunnett's) Test Analysis for Drug Toxicity Data
+# Steel's (Dunnett's) Test Analysis for Drug Toxicity Data - MCF7A1H1
 # Analysis of cell viability across drug concentrations with repeated measures (occasions)
 # 3 technical replicates per concentration per occasion
 # 4 occasions (different days, same cell line)
@@ -20,43 +20,27 @@ for (pkg in packages) {
 }
 
 # ============================================================================
-# 2. CREATE SAMPLE DATA (REPLACE WITH YOUR OWN)
+# 2. LOAD YOUR DATA
 # ============================================================================
 
-# This creates a realistic sample dataset
-# Replace this section with your actual data import (e.g., read.csv())
+# Load MCF7A1H1 data from CSV file
+data_toxicity <- read.csv("MCF7A1H1.csv")
 
-set.seed(42)
-
-# Create sample data: cell viability (%) for 4 concentrations + control
-# 3 technical replicates × 4 occasions = 12 observations per concentration
-
-data_toxicity <- expand_grid(
-  occasion = factor(1:4, labels = c("30.06.26", "08.07.26", "15.07.26", "16.07.26")),
-  replicate = factor(1:3, labels = c("Rep_1", "Rep_2", "Rep_3")),
-  concentration = factor(
-    c("Control", "50", "100", "200", "500"),
-    levels = c("Control", "50", "100", "200", "500")
-  )
-) %>%
-  mutate(
-    # Simulate viability data with dose-dependent decrease
-    viability = case_when(
-      concentration == "Control" ~ rnorm(n(), mean = 98, sd = 3),
-      concentration == "50" ~ rnorm(n(), mean = 92, sd = 4),
-      concentration == "100" ~ rnorm(n(), mean = 85, sd = 5),
-      concentration == "200" ~ rnorm(n(), mean = 72, sd = 6),
-      concentration == "500" ~ rnorm(n(), mean = 55, sd = 8)
-    ),
-    # Add occasion effect (e.g., slight batch variation)
-    viability = viability + as.numeric(occasion) * 0.5,
-    # Ensure viability is between 0 and 100
-    viability = pmax(0, pmin(100, viability))
-  ) %>%
-  arrange(occasion, concentration, replicate)
+# Ensure columns are correctly formatted
+data_toxicity$occasion <- factor(data_toxicity$occasion)
+data_toxicity$replicate <- factor(data_toxicity$replicate)
+data_toxicity$concentration <- factor(
+  data_toxicity$concentration,
+  levels = c("Control", "50", "100", "200", "500")
+)
 
 # Display first rows
-head(data_toxicity, 12)
+cat("\n========== DATA LOADED ==========\n")
+cat("Cell line: MCF7A1H1\n")
+cat("File: MCF7A1H1.csv\n")
+cat("Data dimensions:", nrow(data_toxicity), "rows,", ncol(data_toxicity), "columns\n\n")
+
+head(data_toxicity, 15)
 print("Data structure:")
 str(data_toxicity)
 
@@ -120,9 +104,9 @@ plot1 <- ggplot(data_toxicity, aes(x = concentration, y = viability, fill = conc
   geom_jitter(width = 0.2, alpha = 0.5, size = 2) +
   facet_wrap(~occasion) +
   labs(
-    title = "Cell Viability by Concentration and Occasion",
-    x = "Drug Concentration",
-    y = "Viability (%)",
+    title = "MCF7A1H1 - Cell Viability by Concentration and Occasion",
+    x = "Drug Concentration (µg/ml)",
+    y = "Viability",
     fill = "Concentration"
   ) +
   theme_minimal() +
@@ -137,9 +121,9 @@ plot2 <- data_toxicity %>%
   geom_line() +
   geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2) +
   labs(
-    title = "Mean Viability by Concentration (with SE)",
-    x = "Drug Concentration",
-    y = "Mean Viability (%)",
+    title = "MCF7A1H1 - Mean Viability by Concentration (with SE)",
+    x = "Drug Concentration (µg/ml)",
+    y = "Mean Viability",
     color = "Occasion"
   ) +
   theme_minimal() +
@@ -154,9 +138,9 @@ plot3 <- data_toxicity %>%
   geom_line(aes(group = 1), color = "steelblue", size = 1) +
   geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2, color = "steelblue") +
   labs(
-    title = "Dose-Response Curve (All Occasions Combined)",
-    x = "Drug Concentration",
-    y = "Mean Viability (%)"
+    title = "MCF7A1H1 - Dose-Response Curve (All Occasions Combined)",
+    x = "Drug Concentration (µg/ml)",
+    y = "Mean Viability"
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -166,8 +150,8 @@ combined_plots <- gridExtra::grid.arrange(plot1, plot2, plot3, nrow = 2)
 print(combined_plots)
 
 # Save plots
-ggsave("toxicity_analysis_plots.pdf", combined_plots, width = 14, height = 10)
-cat("Plots saved to: toxicity_analysis_plots.pdf\n")
+ggsave("MCF7A1H1_toxicity_analysis_plots.pdf", combined_plots, width = 14, height = 10)
+cat("Plots saved to: MCF7A1H1_toxicity_analysis_plots.pdf\n")
 
 # ============================================================================
 # 5. LINEAR MIXED EFFECTS MODEL (for repeated measures)
@@ -260,7 +244,7 @@ print(summary(model_dose))
 dose_coef <- fixef(model_dose)["dose"]
 cat(sprintf("\nDose coefficient: %.4f\n", dose_coef))
 cat("Interpretation: For each unit increase in concentration,\n")
-cat(sprintf("viability decreases by approximately %.2f%%\n", abs(dose_coef)))
+cat(sprintf("viability changes by approximately %.2f units\n", dose_coef))
 
 # Test if trend is significant
 cat("\nLinear trend test (from dose model):\n")
@@ -293,24 +277,24 @@ print(results_table)
 cat("\n========== SAVING RESULTS ==========\n")
 
 # Save results table
-write.csv(results_table, "toxicity_results_table.csv", row.names = FALSE)
-write.csv(dunnett_results, "dunnett_test_results.csv", row.names = FALSE)
-write.csv(summary_by_conc, "summary_statistics.csv", row.names = FALSE)
+write.csv(results_table, "MCF7A1H1_toxicity_results_table.csv", row.names = FALSE)
+write.csv(dunnett_results, "MCF7A1H1_dunnett_test_results.csv", row.names = FALSE)
+write.csv(summary_by_conc, "MCF7A1H1_summary_statistics.csv", row.names = FALSE)
 
 cat("Results saved:\n")
-cat("  - toxicity_results_table.csv\n")
-cat("  - dunnett_test_results.csv\n")
-cat("  - summary_statistics.csv\n")
+cat("  - MCF7A1H1_toxicity_results_table.csv\n")
+cat("  - MCF7A1H1_dunnett_test_results.csv\n")
+cat("  - MCF7A1H1_summary_statistics.csv\n")
 
 # ============================================================================
 # 10. SUMMARY AND INTERPRETATION
 # ============================================================================
 
-cat("\n========== SUMMARY AND INTERPRETATION ==========\n")
+cat("\n========== SUMMARY AND INTERPRETATION (MCF7A1H1) ==========\n")
 cat("\n1. DOSE-RESPONSE RELATIONSHIP:\n")
 if (abs(dose_coef) > 0.1 && summary(model_dose)$coefficients["dose", "Pr(>|t|)"] < 0.05) {
-  cat("   ✓ Significant negative linear trend detected\n")
-  cat("   ✓ Cell viability significantly decreases with increasing drug concentration\n")
+  cat("   ✓ Significant linear trend detected\n")
+  cat("   ✓ Cell viability significantly changes with drug concentration\n")
 } else {
   cat("   ✗ No significant linear dose-response trend detected\n")
 }
@@ -318,12 +302,12 @@ if (abs(dose_coef) > 0.1 && summary(model_dose)$coefficients["dose", "Pr(>|t|)"]
 cat("\n2. CONCENTRATION-SPECIFIC EFFECTS (vs. Control):\n")
 sig_contrasts <- dunnett_results %>% filter(p.value < 0.05)
 if (nrow(sig_contrasts) > 0) {
-  cat(sprintf("   ✓ %d concentration(s) show significant reduction in viability:\n", nrow(sig_contrasts)))
+  cat(sprintf("   ✓ %d concentration(s) show significant difference from control:\n", nrow(sig_contrasts)))
   for (i in 1:nrow(sig_contrasts)) {
     cat(sprintf("     - %s (p = %.4f)\n", sig_contrasts$contrast[i], sig_contrasts$p.value[i]))
   }
 } else {
-  cat("   ✗ No concentrations show significant reduction compared to control\n")
+  cat("   ✗ No concentrations show significant difference compared to control\n")
 }
 
 cat("\n3. REPEATED MEASURES EFFECT (Occasion variability):\n")
@@ -334,3 +318,5 @@ cat(sprintf("   - Residual variance: %.2f\n", residual_var))
 cat(sprintf("   - Ratio: %.2f%%\n", 100 * random_effect_var / (random_effect_var + residual_var)))
 
 cat("\n========== ANALYSIS COMPLETE ==========\n")
+cat("Cell line: MCF7A1H1\n")
+cat("Analysis date:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
