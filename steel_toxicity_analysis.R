@@ -257,16 +257,14 @@ print(trend_summary)
 
 cat("\n========== COMPREHENSIVE RESULTS TABLE ==========\n")
 
-results_table <- emmeans_fit %>%
-  as.data.frame() %>%
+results_table <- as.data.frame(emmeans_fit) %>%
   mutate(
-    concentration = concentration,
     Mean_Viability = round(emmean, 2),
-    SE = round(SE, 2),
+    SE_Value = round(SE, 2),
     CI_Lower = round(lower.CL, 2),
     CI_Upper = round(upper.CL, 2)
   ) %>%
-  select(concentration, Mean_Viability, SE, CI_Lower, CI_Upper)
+  dplyr::select(concentration, Mean_Viability, SE_Value, CI_Lower, CI_Upper)
 
 print(results_table)
 
