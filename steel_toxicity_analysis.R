@@ -1,4 +1,3 @@
-# Steel's (Dunnett's) Test Analysis for Drug Toxicity Data - MCF7A1H1
 # Analysis of cell viability across drug concentrations with repeated measures (occasions)
 # 3 technical replicates per concentration per occasion
 # 4 occasions (different days, same cell line)
@@ -10,7 +9,7 @@ rm(list = ls())
 # 1. LOAD REQUIRED LIBRARIES
 # ============================================================================
 
-packages <- c("tidyverse", "multcomp", "car", "lme4", "emmeans", "ggplot2", "gridExtra")
+packages <- c("tidyverse", "multcomp", "car", "lme4", "emmeans", "ggplot2", "gridExtra", "clinfun")
 
 for (pkg in packages) {
   if (!require(pkg, character.only = TRUE)) {
@@ -40,8 +39,8 @@ cat("Cell line: MCF7A1H1\n")
 cat("File: MCF7A1H1.csv\n")
 cat("Data dimensions:", nrow(data_toxicity), "rows,", ncol(data_toxicity), "columns\n\n")
 
-head(data_toxicity, 15)
-print("Data structure:")
+print(head(data_toxicity, 15))
+cat("\nData structure:\n")
 str(data_toxicity)
 
 # ============================================================================
@@ -57,51 +56,75 @@ summary_by_conc <- data_toxicity %>%
     N = n(),
     Mean = mean(viability, na.rm = TRUE),
     SD = sd(viability, na.rm = TRUE),
-    Min = min(viability, na.rm = TRUE),
-    Max = max(viability, na.rm = TRUE),
-    SE = SD / sqrt(N),
+    SE = sd(viability, na.rm = TRUE) / sqrt(n()),
     .groups = "drop"
   )
 
-print("Summary by Concentration:")
 print(summary_by_conc)
 
-# Summary by occasion
-summary_by_occasion <- data_toxicity %>%
-  group_by(occasion) %>%
-  summarise(
-    N = n(),
-    Mean = mean(viability, na.rm = TRUE),
-    SD = sd(viability, na.rm = TRUE),
-    .groups = "drop"
-  )
+# ============================================================================
+# 4. STATISTICAL TESTS
+# ============================================================================
 
-print("\nSummary by Occasion:")
-print(summary_by_occasion)
+cat("\n========== STATISTICAL TESTS ==========\n")
 
-# Summary by concentration and occasion
-summary_by_both <- data_toxicity %>%
-  group_by(concentration, occasion) %>%
-  summarise(
-    N = n(),
-    Mean = mean(viability, na.rm = TRUE),
-    SD = sd(viability, na.rm = TRUE),
-    .groups = "drop"
-  )
+# --- DUNNETT'S TEST ---
+cat("\n--- Dunnett's Test: Compare Each Concentration to Control ---\n")
+model_mixed <- lme4::lmer(viability ~ concentration + (1 | occasion), data = data_toxicity)
+dunnett_results <- emmeans::emmeans(model_mixed, dunnett ~ concentration)
+p_val_data_dunnett <- as.data.frame(dunnett_results$contrast)
+print(p_val_data_dunnett)
 
-print("\nSummary by Concentration and Occasion:")
-print(summary_by_both)
+# --- JONCKHEERE TEST FOR DOSE DEPENDENCY ---
+cat("\n--- Jonckheere Test: Dose-Dependency Trend Analysis ---\n")
+
+# Create numeric dose levels (ordered)
+dose_numeric <- as.numeric(data_toxicity$concentration) - 1  # 0, 1, 2, 3, 4
+
+# Perform Jonckheere-Terpstra test
+jonckheere_test <- clinfun::jonckheere.test(
+  x = data_toxicity$viability,
+  g = dose_numeric,
+  alternative = "two.sided"
+)
+
+cat("Jonckheere-Terpstra Test Results:\n")
+cat("Statistic:", jonckheere_test$statistic, "\n")
+cat("P-value:", jonckheere_test$p.value, "\n")
+
+# Create a summary dataframe for visualization
+jonckheere_summary <- data.frame(
+  Test = "Jonckheere-Terpstra",
+  Statistic = jonckheere_test$statistic,
+  P_Value = jonckheere_test$p.value,
+  Significant = jonckheere_test$p.value < 0.05
+)
+
+print(jonckheere_summary)
 
 # ============================================================================
-# 4. VISUALIZATION
+# 5. VISUALIZATION
 # ============================================================================
 
 cat("\n========== CREATING VISUALIZATIONS ==========\n")
 
-# Plot 1: Cell viability by concentration and occasion (single plot with occasion color-coded)
-plot1 <- ggplot(data_toxicity, aes(x = concentration, y = viability, fill = occasion)) +
-  geom_boxplot(alpha = 0.7, position = position_dodge(width = 0.75)) +
-  geom_jitter(aes(color = occasion), position = position_dodge(width = 0.75), alpha = 0.4, size = 2) +
+n_levels <- length(levels(data_toxicity$concentration))
+
+# Fixed y-axis range for all raw value plots
+y_axis_limits <- c(50, 180)
+
+# ------- Plot 1: Cell viability by concentration and occasion (Boxplot) -------
+plot1 <- ggplot(data_toxicity, aes(x = as.numeric(concentration), y = viability, group = concentration)) +
+  geom_vline(xintercept = seq(1.5, n_levels - 0.5, by = 1), color = "grey80", linetype = "dashed") +
+  geom_boxplot(aes(fill = occasion, group = interaction(concentration, occasion)), 
+               alpha = 0.7, position = position_dodge(width = 0.75)) +
+  geom_jitter(aes(color = occasion, group = interaction(concentration, occasion)), 
+              position = position_dodge(width = 0.75), alpha = 0.4, size = 2) +
+  scale_x_continuous(
+    breaks = 1:n_levels,
+    labels = levels(data_toxicity$concentration)
+  ) +
+  scale_y_continuous(limits = y_axis_limits) +
   labs(
     title = "MCF7A1H1 - Cell Viability by Concentration and Occasion",
     x = "Drug Concentration (µg/ml)",
@@ -112,17 +135,30 @@ plot1 <- ggplot(data_toxicity, aes(x = concentration, y = viability, fill = occa
   theme_minimal() +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "right"
+    legend.position = "right",
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
   )
 
-# Plot 2: Line plot showing dose-response across occasions
-plot2 <- data_toxicity %>%
+print(plot1)
+ggsave("MCF7A1H1_plot1_viability_by_concentration.pdf", plot1, width = 10, height = 7)
+cat("Plot 1 saved: MCF7A1H1_plot1_viability_by_concentration.pdf\n")
+
+# ------- Plot 2: Line plot showing dose-response across occasions -------
+plot2_data <- data_toxicity %>%
   group_by(concentration, occasion) %>%
-  summarise(Mean = mean(viability), SE = sd(viability) / sqrt(n()), .groups = "drop") %>%
-  ggplot(aes(x = concentration, y = Mean, color = occasion, group = occasion)) +
+  summarise(Mean = mean(viability), SE = sd(viability) / sqrt(n()), .groups = "drop")
+
+plot2 <- ggplot(plot2_data, aes(x = as.numeric(concentration), y = Mean, color = occasion, group = occasion)) +
+  geom_vline(xintercept = seq(1.5, n_levels - 0.5, by = 1), color = "grey80", linetype = "dashed") +
   geom_point(size = 3) +
   geom_line() +
   geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2) +
+  scale_x_continuous(
+    breaks = 1:n_levels,
+    labels = levels(data_toxicity$concentration)
+  ) +
+  scale_y_continuous(limits = y_axis_limits) +
   labs(
     title = "MCF7A1H1 - Mean Viability by Concentration (with SE)",
     x = "Drug Concentration (µg/ml)",
@@ -130,194 +166,110 @@ plot2 <- data_toxicity %>%
     color = "Occasion"
   ) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
+  )
 
-# Plot 3: Dose-response curve (collapsed across occasions)
-plot3 <- data_toxicity %>%
+print(plot2)
+ggsave("MCF7A1H1_plot2_mean_viability.pdf", plot2, width = 10, height = 7)
+cat("Plot 2 saved: MCF7A1H1_plot2_mean_viability.pdf\n")
+
+# ------- Plot 3: Dose-response curve (collapsed across occasions) -------
+plot3_data <- data_toxicity %>%
   group_by(concentration) %>%
-  summarise(Mean = mean(viability), SE = sd(viability) / sqrt(n()), .groups = "drop") %>%
-  ggplot(aes(x = concentration, y = Mean)) +
+  summarise(Mean = mean(viability), SE = sd(viability) / sqrt(n()), .groups = "drop")
+
+plot3 <- ggplot(plot3_data, aes(x = as.numeric(concentration), y = Mean)) +
+  geom_vline(xintercept = seq(1.5, n_levels - 0.5, by = 1), color = "grey80", linetype = "dashed") +
   geom_point(size = 4, color = "steelblue") +
-  geom_line(aes(group = 1), color = "steelblue", size = 1) +
+  geom_line(aes(group = 1), color = "steelblue", linewidth = 1) +
   geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2, color = "steelblue") +
+  scale_x_continuous(
+    breaks = 1:n_levels,
+    labels = levels(data_toxicity$concentration)
+  ) +
+  scale_y_continuous(limits = y_axis_limits) +
   labs(
     title = "MCF7A1H1 - Dose-Response Curve (All Occasions Combined)",
     x = "Drug Concentration (µg/ml)",
     y = "Mean Viability"
   ) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-# Combine and display plots
-combined_plots <- gridExtra::grid.arrange(plot1, plot2, plot3, nrow = 2)
-print(combined_plots)
-
-# Save plots
-ggsave("MCF7A1H1_toxicity_analysis_plots.pdf", combined_plots, width = 14, height = 10)
-cat("Plots saved to: MCF7A1H1_toxicity_analysis_plots.pdf\n")
-
-# ============================================================================
-# 5. LINEAR MIXED EFFECTS MODEL (for repeated measures)
-# ============================================================================
-
-cat("\n========== LINEAR MIXED EFFECTS MODEL ==========\n")
-
-# Fit mixed model with random intercept for occasion (repeated measures)
-# Fixed effects: concentration
-# Random effects: occasion (accounts for between-day variation)
-
-model_lme <- lme4::lmer(
-  viability ~ concentration + (1 | occasion),
-  data = data_toxicity,
-  REML = TRUE
-)
-
-print(summary(model_lme))
-
-# Model diagnostics
-cat("\n--- Model Diagnostics ---\n")
-print("Residual plot:")
-plot(model_lme)
-
-# Check assumptions
-residuals_lme <- residuals(model_lme)
-shapiro_test <- shapiro.test(residuals_lme)
-cat("\nShapiro-Wilk test for normality of residuals:\n")
-print(shapiro_test)
-
-# Variance homogeneity test (Levene's test)
-data_toxicity$fitted_values <- predict(model_lme)
-levene_test <- car::leveneTest(residuals_lme ~ data_toxicity$concentration)
-cat("\nLevene's test for homogeneity of variance:\n")
-print(levene_test)
-
-# ============================================================================
-# 6. STEEL'S TEST (Dunnett's Test) - Compare Each Concentration to Control
-# ============================================================================
-
-cat("\n========== STEEL'S TEST (DUNNETT'S TEST) ==========\n")
-cat("Testing whether each concentration differs significantly from Control\n")
-
-# Using emmeans for contrasts
-emmeans_fit <- emmeans::emmeans(model_lme, ~concentration)
-
-# Dunnett test: compare all treatments to control
-dunnett_contrasts <- emmeans::contrast(emmeans_fit, method = "dunnett", ref = 1)
-print(summary(dunnett_contrasts, adjust = "dunnett"))
-
-# Convert to a more readable format
-dunnett_results <- summary(dunnett_contrasts, adjust = "dunnett") %>%
-  as.data.frame() %>%
-  mutate(
-    Significant = ifelse(p.value < 0.05, "***", ""),
-    p.value = round(p.value, 4)
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
   )
 
-cat("\n--- Dunnett's Test Results ---\n")
-cat("Null hypothesis: Each concentration has the same viability as Control\n")
-cat("Adjusted p-values (Dunnett correction):\n\n")
-print(dunnett_results)
+print(plot3)
+ggsave("MCF7A1H1_plot3_dose_response_curve.pdf", plot3, width = 10, height = 7)
+cat("Plot 3 saved: MCF7A1H1_plot3_dose_response_curve.pdf\n")
+
+# ------- Plot 4: P-value Significance Visualization (Dunnett's Test) -------
+plot4 <- ggplot(p_val_data_dunnett, aes(x = contrast, y = p.value)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 0.05), 
+            fill = "green", alpha = 0.01) +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", linewidth = 0.8) +
+  geom_segment(aes(x = contrast, xend = contrast, y = 0, yend = p.value), color = "grey50") +
+  geom_point(aes(color = p.value < 0.05), size = 4) +
+  scale_color_manual(values = c("TRUE" = "darkgreen", "FALSE" = "firebrick")) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  labs(
+    title = "Dunnett's Test: P-Values vs. Control Group",
+    x = "Comparison",
+    y = "Adjusted P-Value",
+    color = "Significant (p < 0.05)"
+  ) +
+  annotate("text", x = 1, y = 0.08, label = "Significance Threshold (p = 0.05)", 
+           color = "red", fontface = "italic", size = 3, adj = 0) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+print(plot4)
+ggsave("MCF7A1H1_plot4_dunnett_pvalues.pdf", plot4, width = 10, height = 7)
+cat("Plot 4 saved: MCF7A1H1_plot4_dunnett_pvalues.pdf\n")
+
+# ------- Plot 5: Jonckheere Test P-Value Visualization -------
+plot5 <- ggplot(jonckheere_summary, aes(x = Test, y = P_Value)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 0.05), 
+            fill = "green", alpha = 0.01) +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", linewidth = 0.8) +
+  geom_segment(aes(x = Test, xend = Test, y = 0, yend = P_Value), color = "grey50") +
+  geom_point(aes(color = P_Value < 0.05), size = 6) +
+  scale_color_manual(values = c("TRUE" = "darkgreen", "FALSE" = "firebrick")) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  labs(
+    title = "Jonckheere-Terpstra Test: Dose-Dependency Analysis",
+    x = "Test",
+    y = "P-Value",
+    color = "Significant (p < 0.05)"
+  ) +
+  annotate("text", x = 1.15, y = 0.08, label = "Significance Threshold (p = 0.05)", 
+           color = "red", fontface = "italic", size = 3, adj = 0) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+print(plot5)
+ggsave("MCF7A1H1_plot5_jonckheere_pvalues.pdf", plot5, width = 10, height = 7)
+cat("Plot 5 saved: MCF7A1H1_plot5_jonckheere_pvalues.pdf\n")
 
 # ============================================================================
-# 7. TREND TEST (Linear Contrast for Dose-Response)
+# 6. SUMMARY REPORT
 # ============================================================================
 
-cat("\n========== TREND TEST (Linear Dose-Response) ==========\n")
-
-# Create numeric dose variable (assuming ordered concentrations)
-data_toxicity_dose <- data_toxicity %>%
-  mutate(dose = case_when(
-    concentration == "Control" ~ 0,
-    concentration == "50" ~ 1,
-    concentration == "100" ~ 2,
-    concentration == "200" ~ 3,
-    concentration == "500" ~ 4
-  ))
-
-# Fit model with dose as continuous variable
-model_dose <- lme4::lmer(
-  viability ~ dose + (1 | occasion),
-  data = data_toxicity_dose,
-  REML = TRUE
-)
-
-print(summary(model_dose))
-
-# Extract dose effect
-dose_coef <- fixef(model_dose)["dose"]
-cat(sprintf("\nDose coefficient: %.4f\n", dose_coef))
-cat("Interpretation: For each unit increase in concentration,\n")
-cat(sprintf("viability changes by approximately %.2f units\n", dose_coef))
-
-# Test if trend is significant
-cat("\nLinear trend test (from dose model):\n")
-trend_summary <- summary(model_dose)
-print(trend_summary)
-
-# ============================================================================
-# 8. COMPREHENSIVE RESULTS TABLE
-# ============================================================================
-
-cat("\n========== COMPREHENSIVE RESULTS TABLE ==========\n")
-
-results_table <- as.data.frame(emmeans_fit) %>%
-  mutate(
-    Mean_Viability = round(emmean, 2),
-    SE_Value = round(SE, 2),
-    CI_Lower = round(lower.CL, 2),
-    CI_Upper = round(upper.CL, 2)
-  ) %>%
-  dplyr::select(concentration, Mean_Viability, SE_Value, CI_Lower, CI_Upper)
-
-print(results_table)
-
-# ============================================================================
-# 9. SAVE RESULTS
-# ============================================================================
-
-cat("\n========== SAVING RESULTS ==========\n")
-
-# Save results table
-write.csv(results_table, "MCF7A1H1_toxicity_results_table.csv", row.names = FALSE)
-write.csv(dunnett_results, "MCF7A1H1_dunnett_test_results.csv", row.names = FALSE)
-write.csv(summary_by_conc, "MCF7A1H1_summary_statistics.csv", row.names = FALSE)
-
-cat("Results saved:\n")
-cat("  - MCF7A1H1_toxicity_results_table.csv\n")
-cat("  - MCF7A1H1_dunnett_test_results.csv\n")
-cat("  - MCF7A1H1_summary_statistics.csv\n")
-
-# ============================================================================
-# 10. SUMMARY AND INTERPRETATION
-# ============================================================================
-
-cat("\n========== SUMMARY AND INTERPRETATION (MCF7A1H1) ==========\n")
-cat("\n1. DOSE-RESPONSE RELATIONSHIP:\n")
-if (abs(dose_coef) > 0.1 && summary(model_dose)$coefficients["dose", "Pr(>|t|)"] < 0.05) {
-  cat("   ✓ Significant linear trend detected\n")
-  cat("   ✓ Cell viability significantly changes with drug concentration\n")
-} else {
-  cat("   ✗ No significant linear dose-response trend detected\n")
-}
-
-cat("\n2. CONCENTRATION-SPECIFIC EFFECTS (vs. Control):\n")
-sig_contrasts <- dunnett_results %>% filter(p.value < 0.05)
-if (nrow(sig_contrasts) > 0) {
-  cat(sprintf("   ✓ %d concentration(s) show significant difference from control:\n", nrow(sig_contrasts)))
-  for (i in 1:nrow(sig_contrasts)) {
-    cat(sprintf("     - %s (p = %.4f)\n", sig_contrasts$contrast[i], sig_contrasts$p.value[i]))
-  }
-} else {
-  cat("   ✗ No concentrations show significant difference compared to control\n")
-}
-
-cat("\n3. REPEATED MEASURES EFFECT (Occasion variability):\n")
-random_effect_var <- as.numeric(VarCorr(model_lme)$occasion)
-residual_var <- attr(VarCorr(model_lme), "sc")^2
-cat(sprintf("   - Between-occasion variance: %.2f\n", random_effect_var))
-cat(sprintf("   - Residual variance: %.2f\n", residual_var))
-cat(sprintf("   - Ratio: %.2f%%\n", 100 * random_effect_var / (random_effect_var + residual_var)))
-
-cat("\n========== ANALYSIS COMPLETE ==========\n")
-cat("Cell line: MCF7A1H1\n")
+cat("\n========== ANALYSIS SUMMARY ==========\n")
+cat("\nCell line: MCF7A1H1\n")
 cat("Analysis date:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+cat("\nDunnett's Test (vs. Control):\n")
+print(p_val_data_dunnett)
+cat("\nJonckheere-Terpstra Test (Dose-Dependency):\n")
+print(jonckheere_summary)
+cat("\n========== ANALYSIS COMPLETE ==========\n")
